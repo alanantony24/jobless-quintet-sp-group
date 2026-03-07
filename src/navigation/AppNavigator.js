@@ -15,13 +15,10 @@ const Tab = createBottomTabNavigator();
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab bar icon wrapper — adds the active-state highlight pill
 // ─────────────────────────────────────────────────────────────────────────────
-function TabIcon({ IconComponent, focused, isJoule }) {
-  const activeColor   = COLORS.mint;     // Emerald Mint for all active tabs
-  const inactiveColor = COLORS.textMuted;
-  const color         = focused ? activeColor : inactiveColor;
-
+function TabIcon({ IconComponent, focused }) {
+  const color = focused ? COLORS.mint : COLORS.textMuted;
   return (
-    <View style={[styles.iconWrap, focused && { backgroundColor: COLORS.mintLight }]}>
+    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
       <IconComponent size={22} color={color} strokeWidth={focused ? 2.5 : 1.8} />
     </View>
   );
@@ -62,7 +59,6 @@ export default function AppNavigator() {
         name="EV"
         component={EVScreen}
         options={{
-          tabBarLabel: 'EV Charging',
           tabBarIcon: ({ focused }) => (
             <TabIcon IconComponent={Zap} focused={focused} />
           ),
@@ -72,7 +68,7 @@ export default function AppNavigator() {
         name="JouleBuddy"
         component={JouleBuddyScreen}
         options={{
-          tabBarLabel: 'JouleBuddy',
+          tabBarLabel: 'Buddy',
           tabBarIcon: ({ focused }) => (
             <TabIcon IconComponent={Bot} focused={focused} />
           ),
@@ -102,7 +98,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     ...TYPOGRAPHY.micro,
-    fontSize: 9,
+    fontSize: 10,
     marginTop: 2,
   },
   iconWrap: {
@@ -111,5 +107,8 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconWrapActive: {
+    backgroundColor: COLORS.mintLight,
   },
 });

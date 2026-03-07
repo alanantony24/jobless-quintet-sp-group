@@ -93,11 +93,32 @@ export default function JouleBuddyScreen() {
 
   const allDone = doneCount === totalCount;
 
-  // Build sorted list: pending first, completed second
-  const sortedQuests = useMemo(() => ([
-    ...quests.filter((q) => !isCompleted(q.id)),
-    ...quests.filter((q) =>  isCompleted(q.id)),
-  ]), [quests, isCompleted]);
+  // Priority tiers derived from today's energy consumption breakdown
+  // Cooling 45%, Laundry 25%, Kitchen 20%, Baseload 10%
+  const PRIORITY_MAP = {
+    'Cooling':  'high',    // 45% — highest consumer
+    'Laundry':  'medium',  // 25%
+    'Power':    'low',     // maps to Baseload 10%
+    'Lighting': 'low',     // part of Baseload
+  };
+
+  // Priority sort weight: high → medium → low → none
+  const PRIORITY_WEIGHT = { high: 0, medium: 1, low: 2 };
+
+  // Build sorted list: pending sorted by priority → completed
+  const sortedQuests = useMemo(() => {
+    const pending   = quests.filter((q) => !isCompleted(q.id));
+    const completed = quests.filter((q) =>  isCompleted(q.id));
+
+    // Sort pending by priority tier
+    const sorted = [...pending].sort((a, b) => {
+      const wa = PRIORITY_WEIGHT[PRIORITY_MAP[a.category]] ?? 3;
+      const wb = PRIORITY_WEIGHT[PRIORITY_MAP[b.category]] ?? 3;
+      return wa - wb;
+    });
+
+    return [...sorted, ...completed];
+  }, [quests, isCompleted]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -210,6 +231,7 @@ export default function JouleBuddyScreen() {
             completed={isCompleted(quest.id)}
             onComplete={completeQuest}
             delay={index * 80}
+            priority={!isCompleted(quest.id) ? (PRIORITY_MAP[quest.category] ?? null) : null}
           />
         ))}
 

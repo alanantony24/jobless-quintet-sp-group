@@ -18,6 +18,9 @@ import {
   X,
   Leaf,
   Sparkles,
+  ArrowUp,
+  Minus,
+  ArrowDown,
 } from 'lucide-react-native';
 import StyledCard from './StyledCard';
 import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../theme/theme';
@@ -31,6 +34,13 @@ const DIFF = {
   Hard:   { bg: COLORS.errorLight,   text: COLORS.error      },
 };
 
+// Priority tier config
+const PRIORITY_CONFIG = {
+  high:   { label: 'High Priority',   Icon: ArrowUp,   color: COLORS.error,   bg: COLORS.errorLight,   cardBg: '#FFF8F8', border: COLORS.errorLight },
+  medium: { label: 'Medium Priority', Icon: Minus,     color: '#D97706',      bg: '#FEF3C7',           cardBg: '#FFFDF5', border: '#FDE68A' },
+  low:    { label: 'Low Priority',    Icon: ArrowDown, color: '#3B82F6',      bg: '#DBEAFE',           cardBg: '#F8FAFF', border: '#BFDBFE' },
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TaskCard
 // Props:
@@ -39,13 +49,14 @@ const DIFF = {
 //   onComplete – callback(questId, gp) after photo verification
 //   delay      – moti stagger delay in ms (default 0)
 // ─────────────────────────────────────────────────────────────────────────────
-export default function TaskCard({ quest, completed, onComplete, delay = 0 }) {
+export default function TaskCard({ quest, completed, onComplete, delay = 0, priority = null }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [previewUri,   setPreviewUri]   = useState(null);
   const [confirming,   setConfirming]   = useState(false);
   const [celebrating,  setCelebrating]  = useState(false);
 
   const diff = DIFF[quest.difficulty] ?? DIFF.Easy;
+  const prio = priority ? PRIORITY_CONFIG[priority] : null;
 
   // ── Permissions ─────────────────────────────────────────────────────────────
   const ensurePermission = async (type) => {
@@ -101,7 +112,10 @@ export default function TaskCard({ quest, completed, onComplete, delay = 0 }) {
       <StyledCard
         delay={delay}
         glow={celebrating}
-        style={styles.cardOverride}
+        style={[
+          styles.cardOverride,
+          prio && { borderWidth: 1.5, borderColor: prio.border, backgroundColor: prio.cardBg },
+        ]}
       >
         {/* Left: icon in coloured circle */}
         <View style={[styles.iconCircle, { backgroundColor: quest.colorLight }]}>
@@ -110,6 +124,12 @@ export default function TaskCard({ quest, completed, onComplete, delay = 0 }) {
 
         {/* Center: title, description, GP pill */}
         <View style={styles.center}>
+          {prio && (
+            <View style={[styles.priorityBadge, { backgroundColor: prio.bg }]}>
+              <prio.Icon size={10} color={prio.color} strokeWidth={3} />
+              <Text style={[styles.priorityText, { color: prio.color }]}>{prio.label}</Text>
+            </View>
+          )}
           <Text style={[styles.questTitle, completed && styles.strikethrough]}>
             {quest.title}
           </Text>
@@ -275,6 +295,24 @@ const styles = StyleSheet.create({
     padding: SPACING.base,          // tighter than StyledCard's 20px default
     marginBottom: SPACING.sm,
     gap: SPACING.md,
+  },
+
+  // Priority badge
+  priorityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    alignSelf: 'flex-start',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginBottom: 2,
+  },
+  priorityText: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // Left icon circle

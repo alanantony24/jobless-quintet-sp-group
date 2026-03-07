@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GRADIENTS, SPACING } from '../theme/theme';
+
+const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 44;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GradientHeader
@@ -48,7 +50,7 @@ const styles = StyleSheet.create({
   },
   inner: {
     paddingHorizontal: SPACING.lg,   // 20 px per spec
-    paddingTop: SPACING.lg,
+    paddingTop: STATUS_BAR_HEIGHT + SPACING.sm,
     paddingBottom: SPACING.xl,
   },
 });
