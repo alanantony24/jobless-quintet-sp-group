@@ -4,7 +4,7 @@
 
 export const USER_PROFILE = {
   name: "Ahmad A. Johari",
-  firstName: "Alex",
+  firstName: "Ahmad",
   initials: "AAJ",
   email: "ahmad.johari@email.com",
   phone: "+65 9123 4567",

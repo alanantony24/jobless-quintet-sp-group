@@ -82,7 +82,7 @@ export default function ProfileScreen() {
   function handleLogout() {
     Alert.alert(
       'Log Out',
-      'Are you sure you want to log out of your WattWise account?',
+      'Are you sure you want to log out of your JouleBuddy account?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -97,7 +97,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.mint} />
-      <GreenPointsHeader title="My Profile" subtitle="WattWise account" />
+      <GreenPointsHeader title="My Profile" subtitle="JouleBuddy account" />
 
       <ScrollView
         style={styles.scroll}

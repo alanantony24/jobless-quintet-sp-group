@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# WattWise ML Backend
+# JouleBuddy ML Backend
 #
 # Serves appliance-classification predictions to the React Native app.
 # Reads REAL energy data from ClickHouse Cloud, runs the trained ML model
@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 import random
 import os
 
-app = FastAPI(title="WattWise ML API")
+app = FastAPI(title="JouleBuddy ML API")
 
 # Allow all origins so Expo Go can connect from any device
 app.add_middleware(
@@ -322,6 +322,13 @@ def get_energy_breakdown(period: str = "monthly"):
         })
     timing_data.sort(key=lambda x: x["pct"], reverse=True)
 
+    # Hourly usage pattern — average kW per hour bucket (0–23)
+    hourly_grouped = df.groupby("hour")["power_kw"].mean()
+    hourly_usage = []
+    for h in range(24):
+        kwh = round(float(hourly_grouped.get(h, 0)), 2)
+        hourly_usage.append({"hour": h, "kwh": kwh})
+
     return {
         "label": cfg["label"],
         "badge": badge,
@@ -338,6 +345,7 @@ def get_energy_breakdown(period: str = "monthly"):
             "data": timing_data,
             "totalKwh": total_kwh,
         },
+        "hourlyUsage": hourly_usage,
         "modelAccuracy": MODEL_ACCURACY,
         "modelLoaded": MODEL is not None,
         "dataSource": source,
@@ -463,7 +471,7 @@ def get_energy_context() -> str:
 
 SYSTEM_PROMPT = (
     "You are JouleBuddy, a friendly and knowledgeable energy-saving AI assistant "
-    "for the WattWise app in Singapore. You help users understand their electricity "
+    "for the JouleBuddy app in Singapore. You help users understand their electricity "
     "usage, suggest ways to save energy and money, and answer questions about "
     "sustainable living. Keep responses concise and practical. "
     "Use the user's real energy data when available to give personalized advice."
@@ -602,7 +610,7 @@ threading.Thread(target=_keep_alive, daemon=True).start()
 # ── Run directly with: python main.py ────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    print("\n🔋 WattWise ML Backend starting...")
+    print("\n🔋 JouleBuddy ML Backend starting...")
     print(f"   ClickHouse: {'connected' if CH_CLIENT else 'not connected'}")
     print(f"   ML Model:   {'loaded' if MODEL else 'fallback'}")
     print("   Docs:   http://localhost:8000/docs")

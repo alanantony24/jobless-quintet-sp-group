@@ -55,7 +55,7 @@ import {
   TYPOGRAPHY,
 } from "../theme/theme";
 import { useGP } from "../context/GPContext";
-import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI, fetchAIInsight } from "../services/energyDataService";
+import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI, fetchAIInsight, generateHourlyData } from "../services/energyDataService";
 import { generateSmartNotifications } from "../services/notificationData";
 import { USER_PROFILE } from "../data/profileData";
 
@@ -126,6 +126,99 @@ const donut = StyleSheet.create({
   unit: { fontSize: 10, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 2 },
 });
 
+// ── Hourly usage pattern chart (plain Views) ─────────────────────────────
+
+function HourlyUsageChart({ data, totalKwh }) {
+  if (!data || data.length === 0) return null;
+  const maxVal = data.reduce((m, d) => Math.max(m, d.kwh), 0) || 1;
+  const maxBarH = 100;
+  const peakIdx = data.reduce((pi, d, i) => (d.kwh > data[pi].kwh ? i : pi), 0);
+  const display = totalKwh % 1 === 0 ? String(totalKwh) : totalKwh.toFixed(1);
+  const peakH = data[peakIdx].hour;
+  const peakLabel = `${peakH % 12 === 0 ? 12 : peakH % 12}${peakH < 12 ? "am" : "pm"}`;
+
+  const LABELS = ["12am", "3am", "6am", "9am", "12pm", "3pm", "6pm", "9pm"];
+
+  return (
+    <View style={hourlyStyles.wrap}>
+      <View style={hourlyStyles.totalRow}>
+        <Text style={hourlyStyles.totalValue}>{display}</Text>
+        <Text style={hourlyStyles.totalUnit}>kWh total</Text>
+      </View>
+      <View style={hourlyStyles.chartRow}>
+        {data.map((d, i) => {
+          const barH = Math.max((d.kwh / maxVal) * maxBarH, 3);
+          const isPeak = i === peakIdx;
+          return (
+            <View key={d.hour} style={hourlyStyles.barCol}>
+              {isPeak && <Text style={hourlyStyles.peakLabel}>{d.kwh.toFixed(1)}</Text>}
+              <View
+                style={[
+                  hourlyStyles.bar,
+                  { height: barH, backgroundColor: isPeak ? "#F59E0B" : "#3B82F6" },
+                  isPeak && hourlyStyles.peakBar,
+                ]}
+              />
+            </View>
+          );
+        })}
+      </View>
+      <View style={hourlyStyles.labelsRow}>
+        {LABELS.map((l) => (
+          <Text key={l} style={hourlyStyles.hourLabel}>{l}</Text>
+        ))}
+      </View>
+      <View style={hourlyStyles.infoRow}>
+        <TriangleAlert size={14} color="#D97706" strokeWidth={2.5} />
+        <Text style={hourlyStyles.infoText}>
+          <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>
+            Peak at {peakLabel}
+          </Text>
+          {" — "}{data[peakIdx].kwh.toFixed(2)} kW avg
+        </Text>
+      </View>
+      <View style={hourlyStyles.legendRow}>
+        <View style={hourlyStyles.legendItem}>
+          <View style={[hourlyStyles.legendDot, { backgroundColor: "#3B82F6" }]} />
+          <Text style={hourlyStyles.legendText}>Off-Peak 11pm–7am</Text>
+        </View>
+        <View style={hourlyStyles.legendItem}>
+          <View style={[hourlyStyles.legendDot, { backgroundColor: "#3B82F6" }]} />
+          <Text style={hourlyStyles.legendText}>Normal 7am–6pm</Text>
+        </View>
+        <View style={hourlyStyles.legendItem}>
+          <View style={[hourlyStyles.legendDot, { backgroundColor: "#F59E0B" }]} />
+          <Text style={hourlyStyles.legendText}>Peak 6pm–11pm</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const hourlyStyles = StyleSheet.create({
+  wrap: { alignItems: "center", marginVertical: SPACING.xs, width: "100%" },
+  totalRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginBottom: SPACING.xs },
+  totalValue: { fontSize: 26, fontWeight: "800", color: COLORS.textHeading, letterSpacing: -0.5 },
+  totalUnit: { fontSize: 10, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 1.2, textTransform: "uppercase" },
+  chartRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 2, marginTop: SPACING.xs, width: "100%" },
+  barCol: { alignItems: "center", flex: 1 },
+  bar: { width: 9, borderRadius: 4 },
+  peakBar: { borderWidth: 1, borderColor: "#D97706" },
+  peakLabel: { fontSize: 8, fontWeight: "700", color: "#F59E0B", marginBottom: 2 },
+  labelsRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", marginTop: 4, paddingHorizontal: 2 },
+  hourLabel: { fontSize: 8, fontWeight: "600", color: COLORS.textMuted },
+  infoRow: {
+    flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "stretch",
+    backgroundColor: COLORS.warningLight, borderRadius: RADIUS.md,
+    padding: SPACING.sm, marginTop: SPACING.sm,
+  },
+  infoText: { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, flex: 1 },
+  legendRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm, marginTop: SPACING.sm, alignSelf: "stretch" },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { ...TYPOGRAPHY.caption, color: COLORS.textBody },
+});
+
 // ── Bar chart for timing breakdown (plain Views) ────────────────────────────
 
 function TimingBarChart({ data, totalKwh }) {
@@ -161,11 +254,11 @@ function TimingBarChart({ data, totalKwh }) {
 }
 
 const barStyles = StyleSheet.create({
-  wrap: { alignItems: "center", marginVertical: SPACING.sm },
-  totalRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginBottom: SPACING.sm },
+  wrap: { alignItems: "center", marginVertical: SPACING.xs, width: "100%" },
+  totalRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginBottom: SPACING.xs },
   totalValue: { fontSize: 26, fontWeight: "800", color: COLORS.textHeading, letterSpacing: -0.5 },
   totalUnit: { fontSize: 10, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 1.2, textTransform: "uppercase" },
-  chartRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 24, marginTop: SPACING.sm },
+  chartRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 24, marginTop: SPACING.xs },
   barCol: { alignItems: "center", gap: 6 },
   pctLabel: { fontSize: 11, fontWeight: "700", color: COLORS.textHeading },
   bar: { width: 52, borderRadius: 8 },
@@ -292,9 +385,12 @@ export default function HomeScreen({ navigation }) {
     weekly: EMPTY_TIMING,
     monthly: EMPTY_TIMING,
   });
+  const [hourlyData, setHourlyData] = useState(() => generateHourlyData());
   const [chartPage, setChartPage] = useState(0);
   const { width: screenWidth } = useWindowDimensions();
-  const chartWidth = screenWidth - SPACING.lg * 2 - 32;
+  // Card inner width = screen - scrollContent padding (20*2) - card padding (20*2)
+  const cardInnerWidth = screenWidth - SPACING.lg * 4;
+  const chartWidth = cardInnerWidth;
 
   useEffect(() => {
     let cancelled = false;
@@ -320,6 +416,15 @@ export default function HomeScreen({ navigation }) {
           }
           setTimingData(validTiming);
           console.log("[Home] ✓ Timing data extracted from energy response");
+        }
+        // Extract hourly usage data (use daily for single-day view)
+        if (apiData.hourlyUsage) {
+          const h = apiData.hourlyUsage;
+          const daily = h.daily;
+          if (daily && daily.length > 0) {
+            setHourlyData(daily);
+            console.log("[Home] ✓ Hourly usage data extracted");
+          }
         }
         const apiStats = await fetchQuickStatsFromAPI();
         if (apiStats && !cancelled) setQuickStatsData(apiStats);
@@ -350,6 +455,10 @@ export default function HomeScreen({ navigation }) {
     () => chartData.reduce((s, d) => s + d.value, 0),
     [chartData],
   );
+  const dailyTotalKwh = useMemo(
+    () => (energyData.daily?.data ?? []).reduce((s, d) => s + d.value, 0),
+    [energyData],
+  );
   const dominant = useMemo(
     () => chartData.reduce((a, b) => (a.value > b.value ? a : b)),
     [chartData],
@@ -371,17 +480,23 @@ export default function HomeScreen({ navigation }) {
 
   // ── Smart notifications from daily energy data (AI-enhanced) ──
   const notifications = useMemo(() => {
-    // If AI insight has notifications, use those
+    const monthlyKwh = energyData.monthly?.data?.reduce((s, d) => s + d.value, 0) || 0;
+    const thresholdNotifs = generateSmartNotifications(energyData.daily?.data ?? [], {
+      monthlyKwh,
+      hourlyData: hourlyData,
+    });
+    // Merge AI insight notifications after threshold ones if available
     if (aiInsight?.notifications?.length) {
-      return aiInsight.notifications.map((n, i) => ({
+      const aiNotifs = aiInsight.notifications.map((n, i) => ({
         id: `ai-${i}`,
         ...n,
-        time: i === 0 ? "Just now" : i === 1 ? "1h ago" : "3h ago",
-        read: false,
+        time: "5h ago",
+        read: true,
       }));
+      return [...thresholdNotifs, ...aiNotifs];
     }
-    return generateSmartNotifications(energyData.daily?.data ?? []);
-  }, [energyData, aiInsight]);
+    return thresholdNotifs;
+  }, [energyData, aiInsight, hourlyData]);
   const hasUnread = notifications.some((n) => !n.read);
 
   async function handleGreenUpVerify() {
@@ -462,14 +577,16 @@ export default function HomeScreen({ navigation }) {
         <StyledCard delay={0} style={styles.breakdownCard}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Energy Breakdown</Text>
-            <PeriodPills selected={period} onSelect={setPeriod} />
+            <View style={{ opacity: chartPage !== 0 ? 1 : 0, pointerEvents: chartPage !== 0 ? "auto" : "none" }}>
+              <PeriodPills selected={period} onSelect={setPeriod} />
+            </View>
           </View>
-          <Text style={styles.cardSub}>
+          <Text style={[styles.cardSub, { opacity: chartPage !== 0 ? 1 : 0 }]}>
             {current.subtitle} · {current.badge}
           </Text>
 
           {dataSource === "ml-model" && (
-            <View style={styles.mlBadge}>
+            <View style={[styles.mlBadge, { opacity: chartPage !== 0 ? 1 : 0 }]}>
               <Bot size={12} color={COLORS.mint} strokeWidth={2} />
               <Text style={styles.mlBadgeText}>ML-Powered Prediction</Text>
             </View>
@@ -481,16 +598,21 @@ export default function HomeScreen({ navigation }) {
             pagingEnabled
             nestedScrollEnabled
             showsHorizontalScrollIndicator={false}
+            decelerationRate="fast"
             onScroll={(e) => {
               const x = e.nativeEvent?.contentOffset?.x ?? 0;
               const page = Math.round(x / (chartWidth || 1));
               setChartPage(page);
             }}
-            scrollEventThrottle={200}
-            style={{ marginHorizontal: -SPACING.base }}
+            scrollEventThrottle={16}
           >
-            {/* Page 1: Category breakdown (donut) */}
-            <View style={{ width: chartWidth + SPACING.base * 2, paddingHorizontal: SPACING.base }}>
+            {/* Page 1 (default): Hourly usage pattern */}
+            <View style={{ width: chartWidth }}>
+              <HourlyUsageChart data={hourlyData} totalKwh={dailyTotalKwh} />
+            </View>
+
+            {/* Page 2: Category breakdown (donut) */}
+            <View style={{ width: chartWidth }}>
               <DonutChart data={chartData} totalKwh={totalKwh} />
               <View style={styles.dominantRow}>
                 <TriangleAlert size={14} color={COLORS.warning} strokeWidth={2.5} />
@@ -514,8 +636,8 @@ export default function HomeScreen({ navigation }) {
               </View>
             </View>
 
-            {/* Page 2: Timing breakdown (bar chart) */}
-            <View style={{ width: chartWidth + SPACING.base * 2, paddingHorizontal: SPACING.base }}>
+            {/* Page 3: Timing breakdown (bar chart) */}
+            <View style={{ width: chartWidth }}>
               <TimingBarChart data={timingData[period].data} totalKwh={timingData[period].totalKwh} />
               <View style={[styles.dominantRow, { backgroundColor: COLORS.mintLight }]}>
                 <Clock size={14} color={COLORS.mint} strokeWidth={2.5} />
@@ -548,6 +670,7 @@ export default function HomeScreen({ navigation }) {
           <View style={styles.pageDots}>
             <View style={[styles.pageDot, chartPage === 0 && styles.pageDotActive]} />
             <View style={[styles.pageDot, chartPage === 1 && styles.pageDotActive]} />
+            <View style={[styles.pageDot, chartPage === 2 && styles.pageDotActive]} />
           </View>
         </StyledCard>
 
@@ -797,7 +920,7 @@ export default function HomeScreen({ navigation }) {
             ))}
 
             <View style={styles.drawerDivider} />
-            <Text style={styles.drawerVersion}>WattWise v3.2.1</Text>
+            <Text style={styles.drawerVersion}>JouleBuddy v3.2.1</Text>
           </View>
         </View>
       </Modal>
@@ -1009,7 +1132,7 @@ const styles = StyleSheet.create({
   // Swipe page indicator
   pageDots: {
     flexDirection: "row", justifyContent: "center", alignItems: "center",
-    gap: 6, marginTop: SPACING.md,
+    gap: 6, marginTop: SPACING.sm,
   },
   pageDot: {
     width: 8, height: 8, borderRadius: 4,
@@ -1032,7 +1155,7 @@ const styles = StyleSheet.create({
   dominantText: { ...TYPOGRAPHY.bodySm, color: COLORS.textBody, flex: 1 },
 
   // Legend
-  legendGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: SPACING.md, gap: SPACING.sm },
+  legendGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: SPACING.sm, gap: SPACING.sm },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6, width: "46%" },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   legendName: { ...TYPOGRAPHY.caption, color: COLORS.textBody, flex: 1 },

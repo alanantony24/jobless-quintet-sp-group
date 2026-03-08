@@ -63,6 +63,11 @@ export async function fetchEnergyFromAPI() {
         weekly: weekly.timing || null,
         monthly: monthly.timing || null,
       },
+      hourlyUsage: {
+        daily: daily.hourlyUsage || null,
+        weekly: weekly.hourlyUsage || null,
+        monthly: monthly.hourlyUsage || null,
+      },
     };
   } catch (err) {
     console.warn("[EnergyService] ✗ API call failed:", err.message);
@@ -138,6 +143,23 @@ function generateTimingData(period = "monthly", suppliedTotal = null) {
   data.sort((a, b) => b.pct - a.pct);
 
   return { data, totalKwh, dataSource: "local" };
+}
+
+// ── Hourly usage pattern fallback ────────────────────────────────────────────
+
+export function generateHourlyData() {
+  // Realistic Singapore household hourly pattern (avg kW per hour)
+  // Low overnight, morning bump, midday moderate, evening peak
+  const basePattern = [
+    0.3, 0.25, 0.22, 0.2, 0.2, 0.25,   // 0-5   (sleep)
+    0.4, 0.7, 0.9, 0.6, 0.5, 0.55,     // 6-11  (morning)
+    0.65, 0.6, 0.5, 0.45, 0.5, 0.7,    // 12-17 (afternoon)
+    1.1, 1.4, 1.5, 1.3, 0.8, 0.45,     // 18-23 (evening peak)
+  ];
+  return basePattern.map((base, h) => ({
+    hour: h,
+    kwh: round1(base + rand(-0.1, 0.15)),
+  }));
 }
 
 // ── Local fallback (original random generation) ─────────────────────────────
