@@ -549,9 +549,6 @@ export default function HomeScreen({ navigation }) {
             <View style={[styles.pageDot, chartPage === 0 && styles.pageDotActive]} />
             <View style={[styles.pageDot, chartPage === 1 && styles.pageDotActive]} />
           </View>
-          <Text style={styles.chartPageLabel}>
-            {chartPage === 0 ? "By Appliance Category" : "By Time of Use"}
-          </Text>
         </StyledCard>
 
         {/* ──────────────────────────────────────────────────────────────── */}
