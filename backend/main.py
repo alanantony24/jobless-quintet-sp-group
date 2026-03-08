@@ -328,6 +328,61 @@ def get_quick_stats():
     ]
 
 
+@app.get("/api/energy-timing")
+def get_energy_timing(period: str = "monthly"):
+    """
+    Returns energy breakdown by time-of-use pricing period:
+    Off-Peak (11 PM – 7 AM), Normal (7 AM – 6 PM), Peak (6 PM – 11 PM).
+    Uses real ClickHouse data when available.
+    """
+    period_config = {
+        "daily":   {"hours": 24},
+        "weekly":  {"hours": 24 * 7},
+        "monthly": {"hours": 24 * 30},
+    }
+    cfg = period_config.get(period, period_config["monthly"])
+    df, source = get_readings(cfg["hours"])
+
+    # Classify each reading into timing buckets
+    def classify_timing(hour):
+        h = int(hour)
+        if 23 <= h or h < 7:
+            return "Off-Peak"
+        elif 7 <= h < 18:
+            return "Normal"
+        else:
+            return "Peak"
+
+    df["timing"] = df["hour"].apply(classify_timing)
+    grouped = df.groupby("timing")["power_kw"].sum()
+    total = float(grouped.sum())
+
+    TIMING_COLORS = {
+        "Off-Peak": "#3B82F6",   # blue
+        "Normal":   "#10B981",   # green
+        "Peak":     "#F59E0B",   # amber
+    }
+
+    data = []
+    for timing in ["Off-Peak", "Normal", "Peak"]:
+        kwh = float(grouped.get(timing, 0))
+        pct = int(round((kwh / total) * 100)) if total > 0 else 0
+        data.append({
+            "name": timing,
+            "value": round(kwh, 1),
+            "pct": pct,
+            "color": TIMING_COLORS[timing],
+        })
+
+    data.sort(key=lambda x: x["pct"], reverse=True)
+
+    return {
+        "data": data,
+        "totalKwh": round(total, 1),
+        "dataSource": source,
+    }
+
+
 @app.get("/api/health")
 def health_check():
     """Quick health check endpoint."""

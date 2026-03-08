@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle } from "react-native-svg";
@@ -54,7 +55,7 @@ import {
   TYPOGRAPHY,
 } from "../theme/theme";
 import { useGP } from "../context/GPContext";
-import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI, fetchAIInsight } from "../services/energyDataService";
+import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI, fetchAIInsight, fetchAllTimingData } from "../services/energyDataService";
 import { generateSmartNotifications } from "../services/notificationData";
 import { USER_PROFILE } from "../data/profileData";
 
@@ -96,7 +97,7 @@ function DonutChart({ data, totalKwh, size = 200, sw = 28 }) {
           const pct = item.value / total;
           const segLen = Math.max(pct * C - GAP_LEN, 0);
           const gapLen = C - segLen;
-          const rotation = -90 + cumPct * 360;
+          const rot = -90 + cumPct * 360;
           cumPct += pct;
           return (
             <Circle
@@ -105,7 +106,7 @@ function DonutChart({ data, totalKwh, size = 200, sw = 28 }) {
               stroke={item.color} strokeWidth={sw}
               strokeDasharray={`${segLen} ${gapLen}`}
               strokeLinecap="round" fill="none"
-              rotation={rotation} origin={`${cx}, ${cy}`}
+              transform={`rotate(${rot}, ${cx}, ${cy})`}
             />
           );
         })}
@@ -123,6 +124,52 @@ const donut = StyleSheet.create({
   center: { position: "absolute", alignItems: "center" },
   total: { fontSize: 30, fontWeight: "800", color: COLORS.textHeading, letterSpacing: -0.5 },
   unit: { fontSize: 10, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 2 },
+});
+
+// ── Bar chart for timing breakdown (plain Views) ────────────────────────────
+
+function TimingBarChart({ data, totalKwh }) {
+  if (!data || data.length < 3) return null;
+
+  const v0 = data[0].value || 0;
+  const v1 = data[1].value || 0;
+  const v2 = data[2].value || 0;
+  const maxVal = Math.max(v0, v1, v2, 1);
+  const maxBarH = 110;
+  const display = totalKwh % 1 === 0 ? String(totalKwh) : totalKwh.toFixed(1);
+
+  return (
+    <View style={barStyles.wrap}>
+      <View style={barStyles.totalRow}>
+        <Text style={barStyles.totalValue}>{display}</Text>
+        <Text style={barStyles.totalUnit}>kWh total</Text>
+      </View>
+      <View style={barStyles.chartRow}>
+        {data.map((d) => {
+          const barH = Math.max((d.value / maxVal) * maxBarH, 6);
+          return (
+            <View key={d.name} style={barStyles.barCol}>
+              <Text style={barStyles.pctLabel}>{d.pct}%</Text>
+              <View style={[barStyles.bar, { height: barH, backgroundColor: d.color }]} />
+              <Text style={barStyles.barName}>{d.name}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const barStyles = StyleSheet.create({
+  wrap: { alignItems: "center", marginVertical: SPACING.sm },
+  totalRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginBottom: SPACING.sm },
+  totalValue: { fontSize: 26, fontWeight: "800", color: COLORS.textHeading, letterSpacing: -0.5 },
+  totalUnit: { fontSize: 10, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 1.2, textTransform: "uppercase" },
+  chartRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 24, marginTop: SPACING.sm },
+  barCol: { alignItems: "center", gap: 6 },
+  pctLabel: { fontSize: 11, fontWeight: "700", color: COLORS.textHeading },
+  bar: { width: 52, borderRadius: 8 },
+  barName: { fontSize: 10, fontWeight: "600", color: COLORS.textMuted },
 });
 
 // ── Period selector (inline segmented pills) ────────────────────────────────
@@ -232,12 +279,29 @@ export default function HomeScreen({ navigation }) {
     computeQuickStats(generateEnergyData().monthly.data),
   );
   const [aiInsight, setAiInsight] = useState(null);
+  const EMPTY_TIMING = {
+    data: [
+      { name: "Off-Peak", value: 0, pct: 0, color: "#3B82F6" },
+      { name: "Normal", value: 0, pct: 0, color: "#10B981" },
+      { name: "Peak", value: 0, pct: 0, color: "#F59E0B" },
+    ],
+    totalKwh: 0,
+  };
+  const [timingData, setTimingData] = useState({
+    daily: EMPTY_TIMING,
+    weekly: EMPTY_TIMING,
+    monthly: EMPTY_TIMING,
+  });
+  const [chartPage, setChartPage] = useState(0);
+  const { width: screenWidth } = useWindowDimensions();
+  const chartWidth = screenWidth - SPACING.lg * 2 - 32;
 
   useEffect(() => {
     let cancelled = false;
-    console.log("[Home] Fetching energy data + AI insight in parallel...");
+    console.log("[Home] Fetching energy data + AI insight + timing in parallel...");
 
-    // Fetch energy data and AI insight in parallel
+    // Fetch energy data, AI insight, and timing data
+    // Timing runs after energy so it can share the same totalKwh
     const energyPromise = (async () => {
       const apiData = await fetchEnergyFromAPI();
       if (apiData && !cancelled) {
@@ -247,8 +311,10 @@ export default function HomeScreen({ navigation }) {
         const apiStats = await fetchQuickStatsFromAPI();
         if (apiStats && !cancelled) setQuickStatsData(apiStats);
         else if (!cancelled) setQuickStatsData(computeQuickStats(apiData.monthly.data));
+        return apiData;
       } else {
         console.log("[Home] Using local fallback data");
+        return energyData; // from useState initializer
       }
     })();
 
@@ -260,7 +326,22 @@ export default function HomeScreen({ navigation }) {
       }
     })();
 
-    Promise.all([energyPromise, aiPromise]);
+    // Wait for energy data so timing can reuse the same totalKwh per period
+    const timingPromise = (async () => {
+      const eData = await energyPromise;
+      const totals = {
+        daily: eData.daily.data.reduce((s, d) => s + d.value, 0),
+        weekly: eData.weekly.data.reduce((s, d) => s + d.value, 0),
+        monthly: eData.monthly.data.reduce((s, d) => s + d.value, 0),
+      };
+      const allTiming = await fetchAllTimingData(totals);
+      if (!cancelled) {
+        console.log("[Home] ✓ Timing data loaded (all periods)");
+        setTimingData(allTiming);
+      }
+    })();
+
+    Promise.all([energyPromise, aiPromise, timingPromise]);
     return () => { cancelled = true; };
   }, []);
 
@@ -398,31 +479,83 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
 
-          <DonutChart data={chartData} totalKwh={totalKwh} />
-
-          {/* Dominant highlight */}
-          <View style={styles.dominantRow}>
-            <TriangleAlert size={14} color={COLORS.warning} strokeWidth={2.5} />
-            <Text style={styles.dominantText}>
-              <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>
-                {dominant.name} ({dominant.pct}%)
-              </Text>
-              {" "}is your highest usage category
-            </Text>
-          </View>
-
-          {/* Legend */}
-          <View style={styles.legendGrid}>
-            {chartData.map((d) => (
-              <View key={d.name} style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: d.color }]} />
-                <Text style={styles.legendName} numberOfLines={1}>{d.name}</Text>
-                <Text style={styles.legendPct}>
-                  {d.value % 1 === 0 ? d.value : d.value.toFixed(1)} kWh
+          {/* ── Swipeable charts ── */}
+          <ScrollView
+            horizontal
+            pagingEnabled
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={(e) => {
+              const x = e.nativeEvent?.contentOffset?.x ?? 0;
+              const page = Math.round(x / (chartWidth || 1));
+              setChartPage(page);
+            }}
+            scrollEventThrottle={200}
+            style={{ marginHorizontal: -SPACING.base }}
+          >
+            {/* Page 1: Category breakdown (donut) */}
+            <View style={{ width: chartWidth + SPACING.base * 2, paddingHorizontal: SPACING.base }}>
+              <DonutChart data={chartData} totalKwh={totalKwh} />
+              <View style={styles.dominantRow}>
+                <TriangleAlert size={14} color={COLORS.warning} strokeWidth={2.5} />
+                <Text style={styles.dominantText}>
+                  <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>
+                    {dominant.name} ({dominant.pct}%)
+                  </Text>
+                  {" "}is your highest usage category
                 </Text>
               </View>
-            ))}
+              <View style={styles.legendGrid}>
+                {chartData.map((d) => (
+                  <View key={d.name} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: d.color }]} />
+                    <Text style={styles.legendName} numberOfLines={1}>{d.name}</Text>
+                    <Text style={styles.legendPct}>
+                      {d.value % 1 === 0 ? d.value : d.value.toFixed(1)} kWh
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Page 2: Timing breakdown (bar chart) */}
+            <View style={{ width: chartWidth + SPACING.base * 2, paddingHorizontal: SPACING.base }}>
+              <TimingBarChart data={timingData[period].data} totalKwh={timingData[period].totalKwh} />
+              <View style={[styles.dominantRow, { backgroundColor: COLORS.mintLight }]}>
+                <Clock size={14} color={COLORS.mint} strokeWidth={2.5} />
+                <Text style={styles.dominantText}>
+                  {timingData[period].data && timingData[period].data.length > 0 && timingData[period].data[0].pct > 0 ? (
+                    <>
+                      <Text style={{ fontWeight: "700", color: COLORS.textHeading }}>
+                        {timingData[period].data[0].name} ({timingData[period].data[0].pct}%)
+                      </Text>
+                      {" "}highest usage period
+                    </>
+                  ) : "Swipe to view time-of-use breakdown"}
+                </Text>
+              </View>
+              <View style={styles.legendGrid}>
+                {(timingData[period].data || []).map((d) => (
+                  <View key={d.name} style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: d.color }]} />
+                    <Text style={styles.legendName} numberOfLines={1}>{d.name}</Text>
+                    <Text style={styles.legendPct}>
+                      {d.value % 1 === 0 ? d.value : d.value.toFixed(1)} kWh
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Page indicator dots */}
+          <View style={styles.pageDots}>
+            <View style={[styles.pageDot, chartPage === 0 && styles.pageDotActive]} />
+            <View style={[styles.pageDot, chartPage === 1 && styles.pageDotActive]} />
           </View>
+          <Text style={styles.chartPageLabel}>
+            {chartPage === 0 ? "By Appliance Category" : "By Time of Use"}
+          </Text>
         </StyledCard>
 
         {/* ──────────────────────────────────────────────────────────────── */}
@@ -758,7 +891,7 @@ export default function HomeScreen({ navigation }) {
                       stroke={COLORS.mint} strokeWidth={12} fill="none"
                       strokeDasharray={`${(greenPlan2030Pct / 100) * 2 * Math.PI * 52} ${2 * Math.PI * 52}`}
                       strokeLinecap="round"
-                      rotation={-90} origin="65, 65"
+                      transform="rotate(-90, 65, 65)"
                     />
                   </Svg>
                   <View style={styles.impactRingCenter}>
@@ -879,6 +1012,23 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   mlBadgeText: { ...TYPOGRAPHY.micro, color: COLORS.mint, fontSize: 9, fontWeight: "700" },
+
+  // Swipe page indicator
+  pageDots: {
+    flexDirection: "row", justifyContent: "center", alignItems: "center",
+    gap: 6, marginTop: SPACING.md,
+  },
+  pageDot: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: COLORS.borderLight,
+  },
+  pageDotActive: {
+    backgroundColor: COLORS.mint, width: 20,
+  },
+  chartPageLabel: {
+    ...TYPOGRAPHY.caption, color: COLORS.textMuted,
+    textAlign: "center", marginTop: SPACING.xs,
+  },
 
   // Dominant highlight
   dominantRow: {

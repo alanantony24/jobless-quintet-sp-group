@@ -88,6 +88,53 @@ export async function fetchAIInsight(period = "monthly") {
   }
 }
 
+export async function fetchEnergyTiming(period = "monthly", fallbackTotalKwh = null) {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/api/energy-timing?period=${period}`);
+    const data = await res.json();
+    if (data && data.data && data.data.length >= 3) {
+      console.log("[EnergyService] ✓ Timing data received (source:", data.dataSource, ")");
+      return data;
+    }
+    console.warn("[EnergyService] Timing API returned unexpected shape, using fallback");
+    return generateTimingData(period, fallbackTotalKwh);
+  } catch (err) {
+    console.warn("[EnergyService] Timing data fetch failed:", err.message, "— using fallback");
+    return generateTimingData(period, fallbackTotalKwh);
+  }
+}
+
+export async function fetchAllTimingData(totals = {}) {
+  const periods = ["daily", "weekly", "monthly"];
+  const results = {};
+  for (const p of periods) {
+    results[p] = await fetchEnergyTiming(p, totals[p] ?? null);
+  }
+  return results;
+}
+
+function generateTimingData(period = "monthly", suppliedTotal = null) {
+  // Realistic Singapore household timing split:
+  //   Off-Peak (11 PM – 7 AM):  ~25-32% — baseload, fridge, water heater
+  //   Normal   (7 AM – 6 PM):   ~33-40% — daytime appliances
+  //   Peak     (6 PM – 11 PM):  ~30-38% — AC, cooking, entertainment
+  const totalKwh = suppliedTotal != null ? round1(suppliedTotal) : round1(rand(11, 15) * (period === "daily" ? 1 : period === "weekly" ? 7 : 30));
+
+  const offPeakPct = Math.round(rand(25, 32));
+  const peakPct = Math.round(rand(30, 38));
+  const normalPct = 100 - offPeakPct - peakPct;
+
+  const data = [
+    { name: "Off-Peak", value: round1((offPeakPct / 100) * totalKwh), pct: offPeakPct, color: "#3B82F6" },
+    { name: "Normal",   value: round1((normalPct / 100) * totalKwh),  pct: normalPct,  color: "#10B981" },
+    { name: "Peak",     value: round1((peakPct / 100) * totalKwh),    pct: peakPct,     color: "#F59E0B" },
+  ];
+
+  data.sort((a, b) => b.pct - a.pct);
+
+  return { data, totalKwh, dataSource: "local" };
+}
+
 // ── Local fallback (original random generation) ─────────────────────────────
 
 const CATEGORIES = [
