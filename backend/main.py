@@ -293,6 +293,35 @@ def get_energy_breakdown(period: str = "monthly"):
     dominant = data[0]
     peak = f"{random.choice([6, 7, 8])} PM – {random.choice([9, 10, 11])} PM"
 
+    # Timing breakdown from the SAME dataframe so totals always match
+    def classify_timing(hour):
+        h = int(hour)
+        if 23 <= h or h < 7:
+            return "Off-Peak"
+        elif 7 <= h < 18:
+            return "Normal"
+        else:
+            return "Peak"
+
+    df["timing"] = df["hour"].apply(classify_timing)
+    timing_grouped = df.groupby("timing")["power_kw"].sum()
+    TIMING_COLORS = {
+        "Off-Peak": "#3B82F6",
+        "Normal":   "#10B981",
+        "Peak":     "#F59E0B",
+    }
+    timing_data = []
+    for timing in ["Off-Peak", "Normal", "Peak"]:
+        kwh = float(timing_grouped.get(timing, 0))
+        pct = int(round((kwh / total_kwh) * 100)) if total_kwh > 0 else 0
+        timing_data.append({
+            "name": timing,
+            "value": round(kwh, 1),
+            "pct": pct,
+            "color": TIMING_COLORS[timing],
+        })
+    timing_data.sort(key=lambda x: x["pct"], reverse=True)
+
     return {
         "label": cfg["label"],
         "badge": badge,
@@ -305,6 +334,10 @@ def get_energy_breakdown(period: str = "monthly"):
             "savings": f"${round(total_kwh * 0.012, 1)}",
         },
         "totalKwh": total_kwh,
+        "timing": {
+            "data": timing_data,
+            "totalKwh": total_kwh,
+        },
         "modelAccuracy": MODEL_ACCURACY,
         "modelLoaded": MODEL is not None,
         "dataSource": source,

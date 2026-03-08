@@ -58,6 +58,11 @@ export async function fetchEnergyFromAPI() {
       weekly: wrapInsight(weekly, "this week"),
       monthly: wrapInsight(monthly, "this month"),
       source: "ml-model",
+      timing: {
+        daily: daily.timing || null,
+        weekly: weekly.timing || null,
+        monthly: monthly.timing || null,
+      },
     };
   } catch (err) {
     console.warn("[EnergyService] ✗ API call failed:", err.message);

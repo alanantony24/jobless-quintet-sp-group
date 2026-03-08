@@ -55,7 +55,7 @@ import {
   TYPOGRAPHY,
 } from "../theme/theme";
 import { useGP } from "../context/GPContext";
-import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI, fetchAIInsight, fetchAllTimingData } from "../services/energyDataService";
+import { generateEnergyData, computeQuickStats, fetchEnergyFromAPI, fetchQuickStatsFromAPI, fetchAIInsight } from "../services/energyDataService";
 import { generateSmartNotifications } from "../services/notificationData";
 import { USER_PROFILE } from "../data/profileData";
 
@@ -300,21 +300,32 @@ export default function HomeScreen({ navigation }) {
     let cancelled = false;
     console.log("[Home] Fetching energy data + AI insight + timing in parallel...");
 
-    // Fetch energy data, AI insight, and timing data
-    // Timing runs after energy so it can share the same totalKwh
+    // Fetch energy data (includes timing), AI insight
     const energyPromise = (async () => {
       const apiData = await fetchEnergyFromAPI();
       if (apiData && !cancelled) {
         console.log("[Home] ✓ Using ML model data");
         setEnergyData(apiData);
         setDataSource("ml-model");
+        // Extract timing data from the same API response — guaranteed same totals
+        if (apiData.timing) {
+          const t = apiData.timing;
+          const validTiming = {};
+          for (const p of ["daily", "weekly", "monthly"]) {
+            if (t[p] && t[p].data && t[p].data.length >= 3) {
+              validTiming[p] = t[p];
+            } else {
+              validTiming[p] = EMPTY_TIMING;
+            }
+          }
+          setTimingData(validTiming);
+          console.log("[Home] ✓ Timing data extracted from energy response");
+        }
         const apiStats = await fetchQuickStatsFromAPI();
         if (apiStats && !cancelled) setQuickStatsData(apiStats);
         else if (!cancelled) setQuickStatsData(computeQuickStats(apiData.monthly.data));
-        return apiData;
       } else {
         console.log("[Home] Using local fallback data");
-        return energyData; // from useState initializer
       }
     })();
 
@@ -326,22 +337,7 @@ export default function HomeScreen({ navigation }) {
       }
     })();
 
-    // Wait for energy data so timing can reuse the same totalKwh per period
-    const timingPromise = (async () => {
-      const eData = await energyPromise;
-      const totals = {
-        daily: eData.daily.data.reduce((s, d) => s + d.value, 0),
-        weekly: eData.weekly.data.reduce((s, d) => s + d.value, 0),
-        monthly: eData.monthly.data.reduce((s, d) => s + d.value, 0),
-      };
-      const allTiming = await fetchAllTimingData(totals);
-      if (!cancelled) {
-        console.log("[Home] ✓ Timing data loaded (all periods)");
-        setTimingData(allTiming);
-      }
-    })();
-
-    Promise.all([energyPromise, aiPromise, timingPromise]);
+    Promise.all([energyPromise, aiPromise]);
     return () => { cancelled = true; };
   }, []);
 
